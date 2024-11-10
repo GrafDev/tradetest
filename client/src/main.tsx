@@ -13,3 +13,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </BrowserRouter>
     </React.StrictMode>
 )
+import { AuthProvider } from '@/providers/auth-provider'
+import {ThemeProvider} from "@/providers/theme-provider.tsx";
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+        <AuthProvider>
+            <ThemeProvider>
+                <App />
+            </ThemeProvider>
+        </AuthProvider>
+    </React.StrictMode>
+)
