@@ -1,50 +1,36 @@
-# React + TypeScript + Vite
+# TradeTest
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+TradeTest - это платформа для проведения онлайн-торгов в реальном времени. Она позволяет организаторам создавать аукционы, приглашать участников и управлять процессом торгов, а также дает возможность участникам делать ставки и следить за ходом аукциона.
 
-Currently, two official plugins are available:
+## Демо
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Вы можете посмотреть демо-версию проекта по ссылке: [https://tradetest-1d308.web.app/](https://tradetest-1d308.web.app/)
 
-## Expanding the ESLint configuration
+## Скриншоты
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+![Главная страница](screenshots/home.png)
+*Главная страница проекта*
 
-- Configure the top-level `parserOptions` property like this:
+![Панель организатора](screenshots/organizer-panel.png)
+*Панель управления аукционом для организатора*
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+![Страница участника](screenshots/auction-room.png)
+*Страница участника с информацией об аукционе и возможностью делать ставки*
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `..eslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Возможности
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+- Создание аукционов с настраиваемыми параметрами (название, описание, начальная цена, минимальный шаг ставки)
+- Добавление и удаление участников
+- Мониторинг процесса торгов в реальном времени
+- Возможность делать ставки и передавать ход следующему участнику
+- Определение победителя по завершении аукциона
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+## Используемые технологии
+
+- **Frontend**: React, Vite, Tailwind CSS, shadcn/ui
+- **Backend**: Firebase (Firestore, Realtime Database, Authentication)
+- **Deployment**: Firebase Hosting
+
+## Лицензия
+
+Этот проект распространяется под лицензией [MIT](LICENSE).
