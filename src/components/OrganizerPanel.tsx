@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { FirebaseService } from "@/lib/services/firebase-service"
 import { useAuth } from "@/providers/auth-provider"
 import { Auction, AuctionParticipant, Move } from "@/types/types"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 
@@ -15,11 +15,13 @@ export default function OrganizerPanel() {
     const [currentAuction, setCurrentAuction] = useState<Auction | null>(null)
     const [participants, setParticipants] = useState<AuctionParticipant[]>([])
     const [moves, setMoves] = useState<Move[]>([])
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [newParticipantName, setNewParticipantName] = useState("")
     const { toast } = useToast()
     const { user } = useAuth()
 
     useEffect(() => {
+        console.log('Auth state:', { user });
         if (!user) return;
 
         let unsubscribeAuction: () => void;
@@ -113,16 +115,44 @@ export default function OrganizerPanel() {
         }
     };
 
+
     const handleAddParticipant = async () => {
-        if (!currentAuction || !newParticipantName.trim()) return;
+        if (!currentAuction) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: "Аукцион не инициализирован"
+            });
+            return;
+        }
+
+        const trimmedName = newParticipantName.trim();
+        if (!trimmedName) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: "Введите имя участника"
+            });
+            return;
+        }
 
         try {
-            await FirebaseService.addParticipant(currentAuction.id, newParticipantName.trim());
+            const participant = await FirebaseService.addParticipant(currentAuction.id, trimmedName);
             setNewParticipantName("");
+
+            // Формируем полную ссылку для участника
+            const participantUrl = `${window.location.origin}/auction/${participant.uniqueUrl}`;
+
+            // Копируем ссылку в буфер обмена
+            await navigator.clipboard.writeText(participantUrl);
+
             toast({
                 title: "Участник добавлен",
-                description: "Уникальная ссылка сгенерирована"
+                description: "Ссылка скопирована в буфер обмена",
             });
+
+            // Закрываем диалог
+            setIsDialogOpen(false);
         } catch (error) {
             console.error('Ошибка при добавлении участника:', error);
             toast({
@@ -180,7 +210,7 @@ export default function OrganizerPanel() {
                                 </Button>
                             </div>
 
-                            <Dialog>
+                            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                                 <DialogTrigger asChild>
                                     <Button variant="outline" className="w-full">
                                         Добавить участника
@@ -190,10 +220,13 @@ export default function OrganizerPanel() {
                                     <DialogHeader>
                                         <DialogTitle>Добавить участника</DialogTitle>
                                         <DialogDescription>
-                                            Введите данные нового участника аукциона
+                                            После добавления участника, ссылка будет автоматически скопирована в буфер обмена
                                         </DialogDescription>
                                     </DialogHeader>
-                                    <div className="grid gap-4 py-4">
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        handleAddParticipant();
+                                    }} className="grid gap-4 py-4">
                                         <div className="grid gap-2">
                                             <Label htmlFor="name">Имя участника</Label>
                                             <Input
@@ -201,12 +234,18 @@ export default function OrganizerPanel() {
                                                 value={newParticipantName}
                                                 onChange={(e) => setNewParticipantName(e.target.value)}
                                                 placeholder="Введите имя участника"
+                                                autoFocus
                                             />
                                         </div>
-                                        <Button onClick={handleAddParticipant}>
-                                            Добавить
-                                        </Button>
-                                    </div>
+                                        <DialogFooter>
+                                            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                                Отмена
+                                            </Button>
+                                            <Button type="submit">
+                                                Добавить
+                                            </Button>
+                                        </DialogFooter>
+                                    </form>
                                 </DialogContent>
                             </Dialog>
 

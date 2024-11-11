@@ -1,11 +1,24 @@
-// src/components/Layout
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
-import { Link } from 'react-router-dom'
-import { ModeToggle } from "@/components/ModeToggle.tsx";
+import { Outlet, Link } from 'react-router-dom'
+import { ModeToggle } from "@/components/ModeToggle";
+import { useAuth } from "@/providers/auth-provider";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 
 export default function Layout() {
-    const [isLoading, setIsLoading] = useState<boolean>(false)
+    const { user, logout } = useAuth();
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    const handleLogout = async () => {
+        try {
+            setIsLoading(true);
+            await logout();
+        } catch (error) {
+            console.error('Ошибка при выходе:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen flex flex-col bg-background">
@@ -32,6 +45,18 @@ export default function Layout() {
                         <div className="w-full flex-1 md:w-auto md:flex-none">
                         </div>
                         <nav className="flex items-center space-x-2">
+                            {user && (
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={handleLogout}
+                                    disabled={isLoading}
+                                    className="mr-2"
+                                >
+                                    <LogOut className="h-[1.2rem] w-[1.2rem]" />
+                                    <span className="sr-only">Выйти</span>
+                                </Button>
+                            )}
                             <ModeToggle />
                         </nav>
                     </div>

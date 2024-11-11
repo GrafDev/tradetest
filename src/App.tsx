@@ -1,12 +1,12 @@
 // src/App.tsx
 import { Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
-import AuctionRoom from "@/pages/AuctionRoom"
 import OrganizerPanel from "@/components/OrganizerPanel"
 import NotFound from "@/pages/NotFound"
 import Layout from "@/components/Layout"
 import { LoginForm } from "@/components/LoginForm"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
+import AuctionRoom from "@/pages/AuctionRoom.tsx";
 
 function App() {
     return (
