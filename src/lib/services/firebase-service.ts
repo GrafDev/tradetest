@@ -25,7 +25,8 @@ export class FirebaseService {
             participants: [],
             item: data.item,
             duration: 15 * 60 * 1000, // 15 минут
-            moveTimeout: 30 * 1000    // 30 секунд
+            moveTimeout: 30 * 1000,   // 30 секунд
+            lastUpdated: Date.now()   // Добавляем время создания
         };
 
         try {
@@ -40,9 +41,29 @@ export class FirebaseService {
     static async getActiveAuctions(): Promise<Auction[]> {
         const snapshot = await get(this.auctionsRef());
         const data = snapshot.val() || {};
-        return Object.values(data).filter((auction: any): auction is Auction =>
-            auction?.status !== 'finished'
-        );
+
+        return Object.values(data)
+            .filter((auction: any): auction is Auction => (
+                !!auction && auction.status === 'active' || auction.status === 'waiting'
+            ))
+            .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+    }
+
+    static async getLastMove(auctionId: string): Promise<Move | null> {
+        const moves = await this.getMoves(auctionId);
+        return moves.length > 0 ? moves[moves.length - 1] : null;
+    }
+    
+    static async getLastCreatedAuction(): Promise<Auction | null> {
+        const snapshot = await get(this.auctionsRef());
+        const data = snapshot.val() || {};
+        const auctions = Object.values(data)
+            .filter((auction: any): auction is Auction => (
+                !!auction && auction.status !== 'finished'
+            ))
+            .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+
+        return auctions[0] || null;
     }
 
     static async getAuction(auctionId: string): Promise<Auction | null> {
@@ -156,18 +177,16 @@ export class FirebaseService {
                 id: crypto.randomUUID(),
                 name,
                 role: 'participant',
-                uniqueUrl: crypto.randomUUID()
+                uniqueUrl: crypto.randomUUID(),
+                auctionId: auctionId // Добавляем привязку к аукциону
             };
 
             const participants = await this.getParticipants(auctionId);
-
-            // Используем транзакцию для атомарного обновления
             const updates: Record<string, any> = {};
             updates[`auction_users/${auctionId}`] = [...participants, participant];
             updates[`auctions/${auctionId}/participants`] = [...participants, participant].map(p => p.id);
 
             await update(ref(db), updates);
-
             return participant;
         } catch (error) {
             console.error('Error adding participant:', error);
@@ -250,12 +269,17 @@ export class FirebaseService {
 
         for (const auctionId of Object.keys(auctions)) {
             const participants = await this.getParticipants(auctionId);
-            const participant = participants.find(p => p.uniqueUrl === url);
+            const participant = participants.find(p =>
+                p.uniqueUrl === url && p.auctionId === auctionId // Проверяем соответствие аукциона
+            );
+
             if (participant) {
-                return {
-                    auction: auctions[auctionId],
-                    participant
-                };
+                const auction = auctions[auctionId];
+                // Проверяем статус аукциона
+                if (auction.status === 'finished') {
+                    return null; // Аукцион завершен, ссылка недействительна
+                }
+                return { auction, participant };
             }
         }
         return null;

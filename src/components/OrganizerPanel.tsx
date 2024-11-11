@@ -1,9 +1,11 @@
 import { useState, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Loader2, Plus } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useAuction } from "@/hooks/useAuction";
 import { useToast } from "@/hooks/use-toast";
-import { copyToClipboard, getParticipantUrl, getLeader } from "@/utils/auctionUtils";
+import { copyToClipboard, getParticipantUrl } from "@/utils/auctionUtils";
 import { AuctionStatus } from "./organizer/AuctionStatus";
 import { TimeProgress } from "./organizer/TimeProgress";
 import { ActionButton } from "./organizer/ActionButton";
@@ -18,6 +20,7 @@ export default function OrganizerPanel() {
     const [newParticipantName, setNewParticipantName] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
+    const navigate = useNavigate();
 
     const {
         currentAuction,
@@ -33,8 +36,22 @@ export default function OrganizerPanel() {
         updateAuctionItem,
     } = useAuction();
 
-    const leader = getLeader(moves, participants);
+    // Определяем текущего лидера торгов
+    const getLeader = useCallback(() => {
+        if (!moves.length || !participants.length) return null;
 
+        const lastMove = moves[moves.length - 1];
+        const leaderParticipant = participants.find(p => p.id === lastMove.userId);
+
+        return leaderParticipant ? {
+            participant: leaderParticipant,
+            price: lastMove.price
+        } : null;
+    }, [moves, participants]);
+
+    const leader = getLeader();
+
+    // Копирование URL участника
     const onCopyUrl = useCallback(async (uniqueUrl: string) => {
         try {
             await copyToClipboard(getParticipantUrl(uniqueUrl));
@@ -51,6 +68,7 @@ export default function OrganizerPanel() {
         }
     }, [toast]);
 
+    // Добавление нового участника
     const onAddParticipant = useCallback(async () => {
         const trimmedName = newParticipantName.trim();
         if (!trimmedName) {
@@ -64,12 +82,12 @@ export default function OrganizerPanel() {
 
         try {
             setIsProcessing(true);
-            setIsDialogOpen(false); // Сначала закрываем модальное окно
+            setIsDialogOpen(false);
 
             const participant = await handleAddParticipant(trimmedName);
             await copyToClipboard(getParticipantUrl(participant.uniqueUrl));
 
-            setNewParticipantName(""); // Очищаем поле после успешного добавления
+            setNewParticipantName("");
 
             toast({
                 title: "Участник добавлен",
@@ -81,12 +99,13 @@ export default function OrganizerPanel() {
                 title: "Ошибка",
                 description: error instanceof Error ? error.message : "Не удалось добавить участника"
             });
-            setIsDialogOpen(true); // Открываем окно обратно в случае ошибки
+            setIsDialogOpen(true);
         } finally {
             setIsProcessing(false);
         }
     }, [newParticipantName, handleAddParticipant, toast]);
 
+    // Удаление участника
     const onRemoveParticipant = useCallback(async (participantId: string) => {
         try {
             setIsProcessing(true);
@@ -105,6 +124,11 @@ export default function OrganizerPanel() {
             setIsProcessing(false);
         }
     }, [handleRemoveParticipant, toast]);
+
+    // Создание нового аукциона
+    const handleCreateNewAuction = () => {
+        navigate(0);
+    };
 
     if (loading || isProcessing) {
         return (
@@ -135,6 +159,21 @@ export default function OrganizerPanel() {
     return (
         <div className="container mx-auto p-4">
             <div className="space-y-6">
+                {currentAuction.status === 'finished' && (
+                    <Card>
+                        <CardContent className="pt-6">
+                            <Button
+                                onClick={handleCreateNewAuction}
+                                className="w-full"
+                                size="lg"
+                            >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Создать новый аукцион
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
+
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">

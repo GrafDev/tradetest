@@ -99,9 +99,10 @@ export function useAuctionParticipant(participantUrl: string) {
         return () => clearInterval(interval);
     }, [auction]);
 
-    const isMyTurn = auction && participant &&
+
+    const isMyTurn = Boolean(auction && participant &&
         auction.status === 'active' &&
-        participants[auction.currentParticipantIndex]?.id === participant.id;
+        participants[auction.currentParticipantIndex]?.id === participant.id);
 
     const placeBid = async (amount: number) => {
         if (!auction || !participant || !isMyTurn) return;

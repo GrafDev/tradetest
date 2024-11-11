@@ -13,6 +13,7 @@ export interface NewParticipant {
 // Полный интерфейс участника аукциона (включая URL)
 export interface AuctionParticipant extends NewParticipant {
     uniqueUrl: string;
+    auctionId: string; // Добавляем это поле
 }
 
 // Интерфейс для авторизованного пользователя
@@ -44,7 +45,8 @@ export interface Auction {
     winnerId?: string;
     duration?: number;
     moveTimeout?: number;
-    item: AuctionItem; // Добавляем свойство item
+    item: AuctionItem;
+    lastUpdated?: number;  // Добавляем поле
 }
 
 // Интерфейс хода в аукционе

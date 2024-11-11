@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseService } from "@/lib/services/firebase-service";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 const auctionFormSchema = z.object({
     title: z.string()
@@ -50,7 +50,7 @@ export function CreateAuctionForm() {
         try {
             setIsLoading(true);
 
-            const auctionId = await FirebaseService.createAuction({
+            await FirebaseService.createAuction({
                 item: {
                     title: values.title,
                     description: values.description,
@@ -60,17 +60,14 @@ export function CreateAuctionForm() {
                 currentPrice: values.startPrice,
             });
 
-            console.log('Created auction with ID:', auctionId); // Добавляем использование
-
             toast({
                 title: "Аукцион создан",
                 description: "Теперь вы можете добавлять участников",
             });
 
-            form.reset();
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            window.location.reload();
+            setTimeout(() => {
+                window.location.href = '/organizer';
+            }, 500);
 
         } catch (error) {
             toast({
@@ -84,109 +81,105 @@ export function CreateAuctionForm() {
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Создание нового аукциона</CardTitle>
-                <CardDescription>
-                    Заполните информацию о предмете торгов
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        <FormField
-                            control={form.control}
-                            name="title"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Название предмета</FormLabel>
-                                    <FormControl>
-                                        <Input {...field} placeholder="Введите название предмета" />
-                                    </FormControl>
-                                    <FormDescription>
-                                        Краткое название предмета торгов
-                                    </FormDescription>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Название предмета</FormLabel>
+                            <FormControl>
+                                <Input {...field} placeholder="Введите название предмета" />
+                            </FormControl>
+                            <FormDescription>
+                                Краткое название предмета торгов
+                            </FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
-                        <FormField
-                            control={form.control}
-                            name="description"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Описание</FormLabel>
-                                    <FormControl>
-                                        <Textarea
-                                            {...field}
-                                            placeholder="Подробное описание предмета"
-                                            className="h-32"
-                                        />
-                                    </FormControl>
-                                    <FormDescription>
-                                        Детальное описание предмета торгов
-                                    </FormDescription>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Описание</FormLabel>
+                            <FormControl>
+                                <Textarea
+                                    {...field}
+                                    placeholder="Подробное описание предмета"
+                                    className="h-32"
+                                />
+                            </FormControl>
+                            <FormDescription>
+                                Детальное описание предмета торгов
+                            </FormDescription>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
 
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <FormField
-                                control={form.control}
-                                name="startPrice"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Начальная цена</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                type="number"
-                                                {...field}
-                                                onChange={e => field.onChange(Number(e.target.value))}
-                                            />
-                                        </FormControl>
-                                        <FormDescription>
-                                            Стартовая цена в рублях
-                                        </FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
+                <div className="grid gap-4 md:grid-cols-2">
+                    <FormField
+                        control={form.control}
+                        name="startPrice"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Начальная цена</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        {...field}
+                                        onChange={e => field.onChange(Number(e.target.value))}
+                                    />
+                                </FormControl>
+                                <FormDescription>
+                                    Стартовая цена в рублях
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
 
-                            <FormField
-                                control={form.control}
-                                name="minStep"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Минимальный шаг</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                type="number"
-                                                {...field}
-                                                onChange={e => field.onChange(Number(e.target.value))}
-                                            />
-                                        </FormControl>
-                                        <FormDescription>
-                                            Минимальный шаг ставки в рублях
-                                        </FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-                        </div>
-                    </form>
-                </Form>
-            </CardContent>
-            <CardFooter>
+                    <FormField
+                        control={form.control}
+                        name="minStep"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Минимальный шаг</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        {...field}
+                                        onChange={e => field.onChange(Number(e.target.value))}
+                                    />
+                                </FormControl>
+                                <FormDescription>
+                                    Минимальный шаг ставки в рублях
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+
                 <Button
+                    type="submit"
                     className="w-full"
-                    onClick={form.handleSubmit(onSubmit)}
                     disabled={isLoading}
                 >
-                    {isLoading ? "Создание..." : "Создать аукцион"}
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Создание...
+                        </>
+                    ) : (
+                        "Создать аукцион"
+                    )}
                 </Button>
-            </CardFooter>
-        </Card>
+            </form>
+        </Form>
     );
 }

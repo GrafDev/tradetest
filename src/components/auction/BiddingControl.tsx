@@ -9,9 +9,9 @@ import type { Auction } from "@/types/types";
 
 interface BiddingControlProps {
     auction: Auction;
-    isMyTurn: boolean;
+    isMyTurn: boolean; // Теперь это строго boolean
     loading: boolean;
-    timeLeft: number; // Переименовываем с moveTimeLeft на timeLeft
+    timeLeft: number;
     onPlaceBid: (amount: number) => Promise<void>;
     onSkip: () => Promise<void>;
 }
@@ -30,7 +30,6 @@ export function BiddingControl({
     );
     const [error, setError] = useState<string>("");
 
-    // Валидация и отправка ставки
     const handleSubmit = async () => {
         try {
             setError("");
@@ -65,10 +64,8 @@ export function BiddingControl({
 
     return (
         <div className="space-y-4">
-            {/* Используем существующий компонент TimeProgress */}
             <TimeProgress moveTimeLeft={timeLeft} />
 
-            {/* Основной контент */}
             <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
@@ -76,7 +73,6 @@ export function BiddingControl({
                 </AlertDescription>
             </Alert>
 
-            {/* Сообщение об ошибке */}
             {error && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
@@ -84,7 +80,6 @@ export function BiddingControl({
                 </Alert>
             )}
 
-            {/* Форма ставки */}
             <div className="flex gap-2">
                 <div className="flex-1">
                     <Input
@@ -114,7 +109,6 @@ export function BiddingControl({
                 </Button>
             </div>
 
-            {/* Пропуск хода */}
             <Button
                 variant="outline"
                 onClick={onSkip}
@@ -124,7 +118,6 @@ export function BiddingControl({
                 Пропустить ход
             </Button>
 
-            {/* Подсказка по минимальной ставке */}
             <div className="text-sm text-muted-foreground text-center">
                 Минимальный шаг ставки: {minStep} ₽
             </div>
