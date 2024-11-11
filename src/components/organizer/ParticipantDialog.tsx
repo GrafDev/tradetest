@@ -5,10 +5,10 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
+    DialogFooter,
 } from "@/components/ui/dialog";
 import type { Auction } from "@/types/types";
 
@@ -17,7 +17,7 @@ interface ParticipantDialogProps {
     onOpenChange: (open: boolean) => void;
     participantName: string;
     onParticipantNameChange: (name: string) => void;
-    onSubmit: () => void;
+    onSubmit: () => Promise<void>;
     currentAuction: Auction | null;
 }
 
@@ -29,6 +29,11 @@ export function ParticipantDialog({
                                       onSubmit,
                                       currentAuction
                                   }: ParticipantDialogProps) {
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await onSubmit();
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogTrigger asChild>
@@ -40,18 +45,20 @@ export function ParticipantDialog({
                     Добавить участника
                 </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent onInteractOutside={(e) => {
+                // Предотвращаем закрытие во время обработки
+                if (participantName.trim()) {
+                    e.preventDefault();
+                }
+            }}>
                 <DialogHeader>
                     <DialogTitle>Добавить участника</DialogTitle>
                     <DialogDescription>
                         После добавления участника, ссылка будет автоматически скопирована в буфер обмена
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={(e) => {
-                    e.preventDefault();
-                    onSubmit();
-                }} className="grid gap-4 py-4">
-                    <div className="grid gap-2">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2">
                         <Label htmlFor="name">Имя участника</Label>
                         <Input
                             id="name"
@@ -65,7 +72,7 @@ export function ParticipantDialog({
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Отмена
                         </Button>
-                        <Button type="submit">
+                        <Button type="submit" disabled={!participantName.trim()}>
                             Добавить
                         </Button>
                     </DialogFooter>

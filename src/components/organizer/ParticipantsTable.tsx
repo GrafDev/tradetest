@@ -1,3 +1,4 @@
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Crown, Copy, Trash2 } from "lucide-react";
 import {
@@ -19,13 +20,13 @@ interface ParticipantsTableProps {
     onRemoveParticipant: (id: string) => Promise<void>;
 }
 
-export function ParticipantsTable({
-                                      participants,
-                                      currentAuction,
-                                      leaderId,
-                                      onCopyUrl,
-                                      onRemoveParticipant
-                                  }: ParticipantsTableProps) {
+export const ParticipantsTable = React.memo(function ParticipantsTable({
+                                                                     participants,
+                                                                     currentAuction,
+                                                                     leaderId,
+                                                                     onCopyUrl,
+                                                                     onRemoveParticipant
+                                                                 }: ParticipantsTableProps) {
     return (
         <Table>
             <TableCaption>Список участников торгов</TableCaption>
@@ -55,13 +56,14 @@ export function ParticipantsTable({
                             }
                         </TableCell>
                         <TableCell>
-                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                            <code className="relative bg-muted px-2 py-1 rounded text-xs">
                                 {participant.uniqueUrl}
                             </code>
                         </TableCell>
                         <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                                 <Button
+                                    type="button"
                                     variant="outline"
                                     size="icon"
                                     onClick={() => onCopyUrl(participant.uniqueUrl)}
@@ -71,6 +73,7 @@ export function ParticipantsTable({
                                 </Button>
                                 {currentAuction?.status === 'waiting' && (
                                     <Button
+                                        type="button"
                                         variant="destructive"
                                         size="icon"
                                         onClick={() => onRemoveParticipant(participant.id)}
@@ -93,4 +96,4 @@ export function ParticipantsTable({
             </TableBody>
         </Table>
     );
-}
+});

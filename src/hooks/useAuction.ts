@@ -1,12 +1,7 @@
-// src/hooks/useAuction.ts
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseService } from "@/lib/services/firebase-service";
 import type { Auction, AuctionParticipant, Move, AuctionItem } from "@/types/types";
-
-interface CreateAuctionOptions {
-    item: AuctionItem;
-}
 
 export function useAuction() {
     const [currentAuction, setCurrentAuction] = useState<Auction | null>(null);
@@ -17,80 +12,93 @@ export function useAuction() {
     const [moveTimeLeft, setMoveTimeLeft] = useState<number>(0);
     const { toast } = useToast();
 
-    // Функция обновления аукциона
-    const refreshAuction = async () => {
-        try {
-            const activeAuctions = await FirebaseService.getActiveAuctions();
-            const auction = activeAuctions[0];
-            if (auction) {
-                setCurrentAuction(auction);
-            }
-        } catch (error) {
-            console.error('Ошибка обновления аукциона:', error);
-        }
-    };
+    // Используем ref для хранения функций отписки
+    const unsubscribeRefs = useRef<{
+        auction?: () => void;
+        moves?: () => void;
+        participants?: () => void;
+    }>({});
+
+    // Ref для таймера
+    const timerRef = useRef<NodeJS.Timeout>();
 
     // Инициализация и подписки
     useEffect(() => {
-        let unsubscribeAuction: (() => void) | undefined;
-        let unsubscribeMoves: (() => void) | undefined;
-        let unsubscribeParticipants: (() => void) | undefined;
+        let mounted = true;
 
         const initializeAuction = async () => {
             try {
-                setLoading(true);
                 const activeAuctions = await FirebaseService.getActiveAuctions();
                 const auction = activeAuctions[0];
+
+                if (!mounted) return;
 
                 if (auction?.id) {
                     setCurrentAuction(auction);
 
-                    unsubscribeAuction = FirebaseService.subscribeToAuction(
+                    // Подписываемся на изменения аукциона
+                    unsubscribeRefs.current.auction = FirebaseService.subscribeToAuction(
                         auction.id,
                         (updatedAuction) => {
-                            if (updatedAuction) setCurrentAuction(updatedAuction);
+                            if (updatedAuction && mounted) {
+                                setCurrentAuction(updatedAuction);
+                            }
                         }
                     );
 
-                    unsubscribeParticipants = FirebaseService.subscribeToParticipants(
+                    // Подписываемся на изменения участников
+                    unsubscribeRefs.current.participants = FirebaseService.subscribeToParticipants(
                         auction.id,
-                        setParticipants
+                        (updatedParticipants) => {
+                            if (mounted) {
+                                setParticipants(updatedParticipants || []);
+                            }
+                        }
                     );
 
-                    unsubscribeMoves = FirebaseService.subscribeToMoves(
+                    // Подписываемся на изменения ходов
+                    unsubscribeRefs.current.moves = FirebaseService.subscribeToMoves(
                         auction.id,
-                        setMoves
+                        (updatedMoves) => {
+                            if (mounted) {
+                                setMoves(updatedMoves || []);
+                            }
+                        }
                     );
                 }
             } catch (error) {
                 console.error('Ошибка инициализации:', error);
-                toast({
-                    variant: "destructive",
-                    title: "Ошибка",
-                    description: "Не удалось загрузить данные аукциона"
-                });
+                if (mounted) {
+                    toast({
+                        variant: "destructive",
+                        title: "Ошибка",
+                        description: "Не удалось загрузить данные аукциона"
+                    });
+                }
             } finally {
-                setLoading(false);
+                if (mounted) {
+                    setLoading(false);
+                }
             }
         };
 
         initializeAuction();
 
+        // Очистка при размонтировании
         return () => {
-            unsubscribeAuction?.();
-            unsubscribeMoves?.();
-            unsubscribeParticipants?.();
+            mounted = false;
+            Object.values(unsubscribeRefs.current).forEach(unsubscribe => unsubscribe?.());
         };
-    }, []);
+    }, [toast]);
 
     // Обработка таймеров
     useEffect(() => {
         if (!currentAuction) return;
 
-        const interval = setInterval(() => {
+        // Создаем интервал
+        timerRef.current = setInterval(() => {
             const now = Date.now();
 
-            // Обновление времени аукциона
             if (currentAuction.status === 'active' && currentAuction.startTime && currentAuction.duration) {
                 const endTime = currentAuction.startTime + currentAuction.duration;
                 const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
@@ -101,12 +109,10 @@ export function useAuction() {
                 }
             }
 
-            // Обновление времени хода
             if (currentAuction.moveDeadline) {
                 const moveTime = Math.max(0, Math.floor((currentAuction.moveDeadline - now) / 1000));
                 setMoveTimeLeft(moveTime);
 
-                // Автоматический пропуск хода при истечении времени
                 if (moveTime === 0 && currentAuction.status === 'active') {
                     const nextParticipantIndex = (currentAuction.currentParticipantIndex + 1) % participants.length;
                     FirebaseService.updateMoveDeadline(currentAuction.id, nextParticipantIndex).catch(console.error);
@@ -114,90 +120,19 @@ export function useAuction() {
             }
         }, 1000);
 
-        return () => clearInterval(interval);
-    }, [currentAuction, participants]);
+        // Очистка при изменении зависимостей или размонтировании
+        return () => {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+            }
+        };
+    }, [currentAuction, participants.length]);
 
-    // Создание нового аукциона
-    const createAuction = async (options: CreateAuctionOptions) => {
-        try {
-            setLoading(true);
-            const auctionId = await FirebaseService.createAuction({
-                item: options.item,
-                currentPrice: options.item.startPrice
-            });
-
-            toast({
-                title: "Аукцион создан",
-                description: "Теперь вы можете добавлять участников"
-            });
-
-            return auctionId;
-        } catch (error) {
-            console.error('Ошибка при создании аукциона:', error);
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: error instanceof Error ? error.message : "Не удалось создать аукцион"
-            });
-            throw error;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Обновление информации о предмете
-    const updateAuctionItem = async (auctionId: string, itemUpdates: Partial<AuctionItem>) => {
-        try {
-            setLoading(true);
-            await FirebaseService.updateAuctionItem(auctionId, itemUpdates);
-
-            toast({
-                title: "Успешно",
-                description: "Информация о предмете обновлена"
-            });
-        } catch (error) {
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: "Не удалось обновить информацию о предмете"
-            });
-            throw error;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Запуск аукциона
-    const handleStartAuction = async () => {
+    const handleEndAuction = useCallback(async () => {
         if (!currentAuction?.id) return;
-
+        setLoading(true);
         try {
-            setLoading(true);
-            await FirebaseService.updateAuctionStatus(currentAuction.id, 'active');
-            toast({
-                title: "Успешно",
-                description: "Торги начались"
-            });
-        } catch (error) {
-            console.error('Ошибка при старте аукциона:', error);
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: error instanceof Error ? error.message : "Не удалось начать торги"
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Завершение аукциона
-    const handleEndAuction = async () => {
-        if (!currentAuction?.id) return;
-
-        try {
-            setLoading(true);
             await FirebaseService.updateAuctionStatus(currentAuction.id, 'finished');
-
             const lastMove = moves[moves.length - 1];
             if (lastMove) {
                 await FirebaseService.updateAuction(currentAuction.id, {
@@ -205,13 +140,8 @@ export function useAuction() {
                     endTime: Date.now()
                 });
             }
-
-            toast({
-                title: "Успешно",
-                description: "Торги завершены"
-            });
         } catch (error) {
-            console.error('Ошибка при завершении аукциона:', error);
+            console.error('Error ending auction:', error);
             toast({
                 variant: "destructive",
                 title: "Ошибка",
@@ -220,52 +150,51 @@ export function useAuction() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAuction?.id, moves, toast]);
 
-    // Добавление участника
-    const handleAddParticipant = async (name: string): Promise<AuctionParticipant> => {
+    // Остальные функции-обработчики с useCallback
+    const handleAddParticipant = useCallback(async (name: string): Promise<AuctionParticipant> => {
         if (!currentAuction?.id) {
             throw new Error("Аукцион не инициализирован");
         }
 
+        setLoading(true);
         try {
-            setLoading(true);
             const participant = await FirebaseService.addParticipant(currentAuction.id, name);
             return participant;
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAuction?.id]);
 
-    // Удаление участника
-    const handleRemoveParticipant = async (participantId: string) => {
-        if (!currentAuction?.id) {
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: "Аукцион не инициализирован"
-            });
-            return;
-        }
-
+    const handleStartAuction = useCallback(async () => {
+        if (!currentAuction?.id) return;
+        setLoading(true);
         try {
-            setLoading(true);
-            await FirebaseService.removeParticipant(currentAuction.id, participantId);
-            toast({
-                title: "Успешно",
-                description: "Участник удален"
-            });
-        } catch (error) {
-            console.error('Ошибка при удалении участника:', error);
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: error instanceof Error ? error.message : "Не удалось удалить участника"
-            });
+            await FirebaseService.updateAuctionStatus(currentAuction.id, 'active');
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentAuction?.id]);
+
+    const handleRemoveParticipant = useCallback(async (participantId: string) => {
+        if (!currentAuction?.id) return;
+        setLoading(true);
+        try {
+            await FirebaseService.removeParticipant(currentAuction.id, participantId);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentAuction?.id]);
+
+    const updateAuctionItem = useCallback(async (auctionId: string, itemUpdates: Partial<AuctionItem>) => {
+        setLoading(true);
+        try {
+            await FirebaseService.updateAuctionItem(auctionId, itemUpdates);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     return {
         currentAuction,
@@ -274,12 +203,10 @@ export function useAuction() {
         loading,
         auctionTimeLeft,
         moveTimeLeft,
-        createAuction,
-        updateAuctionItem,
         handleStartAuction,
         handleEndAuction,
         handleAddParticipant,
         handleRemoveParticipant,
-        refreshAuction,
+        updateAuctionItem,
     };
 }

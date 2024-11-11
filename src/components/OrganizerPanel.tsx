@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuction } from "@/hooks/useAuction";
@@ -8,14 +8,15 @@ import { AuctionStatus } from "./organizer/AuctionStatus";
 import { TimeProgress } from "./organizer/TimeProgress";
 import { ActionButton } from "./organizer/ActionButton";
 import { ParticipantDialog } from "./organizer/ParticipantDialog";
-import { ParticipantsTable } from "./organizer/ParticipantsTable";
 import { BiddingHistory } from "./organizer/BiddingHistory";
 import { EditAuctionItemDialog } from "./organizer/EditAuctionItemDialog";
 import { CreateAuctionForm } from "@/components/auction/CreateAuctionForm";
+import ParticipantsSection from "./organizer/ParticipantsSection";
 
 export default function OrganizerPanel() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [newParticipantName, setNewParticipantName] = useState("");
+    const [isProcessing, setIsProcessing] = useState(false);
     const { toast } = useToast();
 
     const {
@@ -32,45 +33,9 @@ export default function OrganizerPanel() {
         updateAuctionItem,
     } = useAuction();
 
-    // Отладочный эффект
-    useEffect(() => {
-        console.log("Current auction state:", currentAuction);
-    }, [currentAuction]);
-
     const leader = getLeader(moves, participants);
 
-    const onAddParticipant = async () => {
-        const trimmedName = newParticipantName.trim();
-        if (!trimmedName) {
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: "Введите имя участника"
-            });
-            return;
-        }
-
-        try {
-            const participant = await handleAddParticipant(trimmedName);
-            setNewParticipantName("");
-            await copyToClipboard(getParticipantUrl(participant.uniqueUrl));
-
-            toast({
-                title: "Участник добавлен",
-                description: "Ссылка скопирована в буфер обмена",
-            });
-
-            setIsDialogOpen(false);
-        } catch (error) {
-            toast({
-                variant: "destructive",
-                title: "Ошибка",
-                description: error instanceof Error ? error.message : "Не удалось добавить участника"
-            });
-        }
-    };
-
-    const onCopyUrl = async (uniqueUrl: string) => {
+    const onCopyUrl = useCallback(async (uniqueUrl: string) => {
         try {
             await copyToClipboard(getParticipantUrl(uniqueUrl));
             toast({
@@ -84,10 +49,64 @@ export default function OrganizerPanel() {
                 description: "Не удалось скопировать ссылку"
             });
         }
-    };
+    }, [toast]);
 
-    // Показываем загрузку при инициализации
-    if (loading) {
+    const onAddParticipant = useCallback(async () => {
+        const trimmedName = newParticipantName.trim();
+        if (!trimmedName) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: "Введите имя участника"
+            });
+            return;
+        }
+
+        try {
+            setIsProcessing(true);
+            setIsDialogOpen(false); // Сначала закрываем модальное окно
+
+            const participant = await handleAddParticipant(trimmedName);
+            await copyToClipboard(getParticipantUrl(participant.uniqueUrl));
+
+            setNewParticipantName(""); // Очищаем поле после успешного добавления
+
+            toast({
+                title: "Участник добавлен",
+                description: "Ссылка скопирована в буфер обмена",
+            });
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: error instanceof Error ? error.message : "Не удалось добавить участника"
+            });
+            setIsDialogOpen(true); // Открываем окно обратно в случае ошибки
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [newParticipantName, handleAddParticipant, toast]);
+
+    const onRemoveParticipant = useCallback(async (participantId: string) => {
+        try {
+            setIsProcessing(true);
+            await handleRemoveParticipant(participantId);
+            toast({
+                title: "Успешно",
+                description: "Участник удален"
+            });
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: "Не удалось удалить участника"
+            });
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [handleRemoveParticipant, toast]);
+
+    if (loading || isProcessing) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -95,7 +114,6 @@ export default function OrganizerPanel() {
         );
     }
 
-    // Если нет аукциона - показываем форму создания
     if (!currentAuction || !currentAuction.item) {
         return (
             <div className="container mx-auto p-4">
@@ -114,7 +132,6 @@ export default function OrganizerPanel() {
         );
     }
 
-    // Основной интерфейс панели организатора
     return (
         <div className="container mx-auto p-4">
             <div className="space-y-6">
@@ -144,7 +161,7 @@ export default function OrganizerPanel() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Панель организатора торгов</CardTitle>
+                        <CardTitle>Панель управления торгами</CardTitle>
                         <CardDescription>
                             Управление текущим аукционом
                         </CardDescription>
@@ -183,12 +200,12 @@ export default function OrganizerPanel() {
                                 currentAuction={currentAuction}
                             />
 
-                            <ParticipantsTable
+                            <ParticipantsSection
                                 participants={participants}
                                 currentAuction={currentAuction}
                                 leaderId={leader?.participant.id}
                                 onCopyUrl={onCopyUrl}
-                                onRemoveParticipant={handleRemoveParticipant}
+                                onRemoveParticipant={onRemoveParticipant}
                             />
                         </div>
                     </CardContent>

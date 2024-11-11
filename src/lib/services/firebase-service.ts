@@ -146,27 +146,33 @@ export class FirebaseService {
 
     // Управление участниками
     static async addParticipant(auctionId: string, name: string): Promise<AuctionParticipant> {
-        const auction = await this.getAuction(auctionId);
-        if (!auction || auction.status !== 'waiting') {
-            throw new Error('Нельзя добавить участника после начала торгов');
+        try {
+            const auction = await this.getAuction(auctionId);
+            if (!auction || auction.status !== 'waiting') {
+                throw new Error('Нельзя добавить участника после начала торгов');
+            }
+
+            const participant: AuctionParticipant = {
+                id: crypto.randomUUID(),
+                name,
+                role: 'participant',
+                uniqueUrl: crypto.randomUUID()
+            };
+
+            const participants = await this.getParticipants(auctionId);
+
+            // Используем транзакцию для атомарного обновления
+            const updates: Record<string, any> = {};
+            updates[`auction_users/${auctionId}`] = [...participants, participant];
+            updates[`auctions/${auctionId}/participants`] = [...participants, participant].map(p => p.id);
+
+            await update(ref(db), updates);
+
+            return participant;
+        } catch (error) {
+            console.error('Error adding participant:', error);
+            throw error;
         }
-
-        const participant: AuctionParticipant = {
-            id: crypto.randomUUID(),
-            name,
-            role: 'participant',
-            uniqueUrl: crypto.randomUUID()
-        };
-
-        const participants = await this.getParticipants(auctionId);
-        participants.push(participant);
-
-        await set(this.participantsRef(auctionId), participants);
-        await update(this.auctionRef(auctionId), {
-            participants: participants.map(p => p.id)
-        });
-
-        return participant;
     }
 
     static async removeParticipant(auctionId: string, participantId: string) {
