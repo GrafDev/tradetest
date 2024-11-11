@@ -27,15 +27,15 @@ export type AuctionStatus = 'waiting' | 'active' | 'finished';
 export interface Auction {
     id: string;
     status: AuctionStatus;
-    startTime?: number;
-    endTime?: number;
+    startTime?: number | null;
+    endTime?: number | null;
     currentPrice: number;
     currentParticipantIndex: number;
-    participants: string[]; // массив ID участников
-    moveDeadline?: number;
+    participants: string[];
+    moveDeadline?: number | null;
     winnerId?: string;
-    duration?: number; // длительность аукциона в миллисекундах
-    moveTimeout?: number; // время на ход в миллисекундах
+    duration?: number;
+    moveTimeout?: number;
 }
 
 // Интерфейс хода в аукционе

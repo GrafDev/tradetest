@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { Timer, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { Timer, AlertCircle, ArrowRight, Loader2, Crown } from 'lucide-react';
 import { FirebaseService } from '@/lib/services/firebase-service';
+import { getLeader } from '@/utils/auctionUtils';
 import type { Auction, AuctionParticipant, Move } from '@/types/types';
+import {cn} from "@/utils/utils.ts";
 
 const AuctionRoom: React.FC = () => {
-    const { id } = useParams(); // Получаем URL участника из параметров
+    const { id } = useParams();
     const [auction, setAuction] = useState<Auction | null>(null);
     const [participant, setParticipant] = useState<AuctionParticipant | null>(null);
     const [participants, setParticipants] = useState<AuctionParticipant[]>([]);
@@ -29,7 +31,6 @@ const AuctionRoom: React.FC = () => {
 
         const initializeAuctionRoom = async () => {
             try {
-                // Поиск аукциона по URL участника
                 const result = await FirebaseService.findAuctionByParticipantUrl(id);
 
                 if (!result) {
@@ -44,14 +45,16 @@ const AuctionRoom: React.FC = () => {
                 const { auction: foundAuction, participant: foundParticipant } = result;
                 setAuction(foundAuction);
                 setParticipant(foundParticipant);
-                setBidAmount(foundAuction.currentPrice);
+                setBidAmount(foundAuction.currentPrice + 1); // Устанавливаем начальную ставку на 1 больше текущей
 
                 // Подписка на обновления аукциона
                 const unsubscribeAuction = FirebaseService.subscribeToAuction(
                     foundAuction.id,
                     (updatedAuction) => {
-                        setAuction(updatedAuction);
-                        setBidAmount(prev => Math.max(prev, updatedAuction.currentPrice));
+                        if (updatedAuction) {
+                            setAuction(updatedAuction);
+                            setBidAmount(prev => Math.max(prev, updatedAuction.currentPrice + 1));
+                        }
                     }
                 );
 
@@ -120,6 +123,10 @@ const AuctionRoom: React.FC = () => {
     const isMyTurn = auction && participant &&
         auction.status === 'active' &&
         participants[auction.currentParticipantIndex]?.id === participant.id;
+
+    // Получаем информацию о лидере
+    const leader = getLeader(moves, participants);
+    const isLeader = leader?.participant.id === participant?.id;
 
     // Обработка отправки ставки
     const handleSubmit = async () => {
@@ -238,10 +245,21 @@ const AuctionRoom: React.FC = () => {
                 </CardHeader>
 
                 <CardContent className="space-y-6">
-                    <div className="p-4 bg-muted rounded-lg">
+                    <div className="p-4 bg-muted rounded-lg space-y-3">
                         <div className="text-2xl font-bold text-center">
                             Текущая ставка: {auction.currentPrice.toLocaleString()} ₽
                         </div>
+
+                        {leader && (
+                            <div className="flex items-center justify-center gap-2 text-center">
+                                <Crown className="h-4 w-4 text-yellow-500" />
+                                <span className="text-sm text-muted-foreground">Лидер торгов: </span>
+                                <span className="font-medium">
+                                    {leader.participant.name}
+                                    {isLeader ? ' (вы)' : ''}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     {isMyTurn ? (
@@ -291,13 +309,20 @@ const AuctionRoom: React.FC = () => {
                             {participants.map((p) => (
                                 <div
                                     key={p.id}
-                                    className={`flex justify-between items-center p-2 ${
-                                        p.id === participant.id ? 'bg-secondary rounded' : ''
-                                    }`}
+                                    className={cn(
+                                        "flex justify-between items-center p-2 rounded",
+                                        p.id === participant.id && 'bg-secondary',
+                                        leader?.participant.id === p.id && 'border-l-4 border-yellow-500 pl-3'
+                                    )}
                                 >
-                                    <span className={p.id === participant.id ? 'font-medium' : ''}>
-                                        {p.name} {p.id === participant.id ? '(вы)' : ''}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {leader?.participant.id === p.id && (
+                                            <Crown className="h-4 w-4 text-yellow-500" />
+                                        )}
+                                        <span className={p.id === participant.id ? 'font-medium' : ''}>
+                                            {p.name} {p.id === participant.id ? '(вы)' : ''}
+                                        </span>
+                                    </div>
                                     <span className="text-sm text-muted-foreground">
                                         {auction.currentParticipantIndex === participants.indexOf(p)
                                             ? 'Текущий ход'
@@ -317,12 +342,18 @@ const AuctionRoom: React.FC = () => {
                                 <div key={index} className="flex justify-between items-center p-2 text-sm">
                                     <span>
                                         {participants.find(p => p.id === move.userId)?.name}
+                                        {move.userId === participant.id ? ' (вы)' : ''}
                                     </span>
                                     <span className="text-muted-foreground">
                                         {move.price.toLocaleString()} ₽
                                     </span>
                                 </div>
                             ))}
+                            {moves.length === 0 && (
+                                <div className="text-center text-sm text-muted-foreground py-2">
+                                    Пока нет ставок
+                                </div>
+                            )}
                         </div>
                     </div>
                 </CardContent>
