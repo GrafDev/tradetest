@@ -1,17 +1,17 @@
 // src/components/LoginForm
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Alert, AlertDescription } from "./ui/alert";
-import { useAuth } from "../providers/auth-provider";
+import React, {useState} from 'react';
+import {useNavigate} from 'react-router-dom';
+import {Button} from "./ui/button";
+import {Input} from "./ui/input";
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "./ui/card";
+import {Alert, AlertDescription} from "./ui/alert";
+import {useAuth} from "../providers/auth-provider";
 
 export function LoginForm() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-    const { login } = useAuth();
+    const {login} = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -33,6 +33,10 @@ export function LoginForm() {
                     <CardTitle>Вход для организатора</CardTitle>
                     <CardDescription>
                         Введите свои учетные данные для входа в панель управления
+                        <br/>
+                        login: <br/> tradetest@gmail.com
+                        <br/>
+                        password: <br/> tradetest
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

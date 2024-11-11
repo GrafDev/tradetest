@@ -17,7 +17,7 @@ export default function Home() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-                    <Card>
+                    <Card className="flex flex-col justify-between">
                         <CardHeader>
                             <CardTitle>Организатор торгов</CardTitle>
                             <CardDescription>
@@ -55,9 +55,12 @@ export default function Home() {
                                 <li>Отслеживание хода торгов</li>
                                 <li>Просмотр статистики</li>
                             </ul>
+                            <br/>
+                            <p> Эта функция в разработке. Доступ по ссылке осуществляется простой вставкой, высланной  ссылки в поле адреса браузера.</p>
+
                         </CardContent>
                         <CardFooter>
-                            <Button variant="outline" className="w-full">
+                            <Button variant="outline" disabled={true} className="w-full">
                                 Войти по ссылке
                             </Button>
                         </CardFooter>
