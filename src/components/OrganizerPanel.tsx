@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuction } from "@/hooks/useAuction";
@@ -10,6 +10,8 @@ import { ActionButton } from "./organizer/ActionButton";
 import { ParticipantDialog } from "./organizer/ParticipantDialog";
 import { ParticipantsTable } from "./organizer/ParticipantsTable";
 import { BiddingHistory } from "./organizer/BiddingHistory";
+import { EditAuctionItemDialog } from "./organizer/EditAuctionItemDialog";
+import { CreateAuctionForm } from "@/components/auction/CreateAuctionForm";
 
 export default function OrganizerPanel() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -27,7 +29,13 @@ export default function OrganizerPanel() {
         handleEndAuction,
         handleAddParticipant,
         handleRemoveParticipant,
+        updateAuctionItem,
     } = useAuction();
+
+    // Отладочный эффект
+    useEffect(() => {
+        console.log("Current auction state:", currentAuction);
+    }, [currentAuction]);
 
     const leader = getLeader(moves, participants);
 
@@ -78,7 +86,8 @@ export default function OrganizerPanel() {
         }
     };
 
-    if (loading && !currentAuction) {
+    // Показываем загрузку при инициализации
+    if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -86,9 +95,53 @@ export default function OrganizerPanel() {
         );
     }
 
+    // Если нет аукциона - показываем форму создания
+    if (!currentAuction || !currentAuction.item) {
+        return (
+            <div className="container mx-auto p-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Создание аукциона</CardTitle>
+                        <CardDescription>
+                            Заполните информацию для создания нового аукциона
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <CreateAuctionForm />
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    // Основной интерфейс панели организатора
     return (
         <div className="container mx-auto p-4">
             <div className="space-y-6">
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle>{currentAuction.item.title}</CardTitle>
+                                <CardDescription>
+                                    Минимальный шаг: {currentAuction.item.minStep.toLocaleString()} ₽
+                                </CardDescription>
+                            </div>
+                            <EditAuctionItemDialog
+                                auctionId={currentAuction.id}
+                                item={currentAuction.item}
+                                onUpdate={updateAuctionItem}
+                                disabled={currentAuction.status !== 'waiting'}
+                            />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">
+                            {currentAuction.item.description}
+                        </p>
+                    </CardContent>
+                </Card>
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Панель организатора торгов</CardTitle>
@@ -98,7 +151,6 @@ export default function OrganizerPanel() {
                     </CardHeader>
                     <CardContent>
                         <div className="grid gap-4">
-                            {/* Статус и действия */}
                             <div className="grid md:grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
                                 <div className="md:col-span-2">
                                     <AuctionStatus
@@ -113,16 +165,15 @@ export default function OrganizerPanel() {
                                         loading={loading}
                                         onStart={handleStartAuction}
                                         onEnd={handleEndAuction}
+                                        participants={participants}
                                     />
                                 </div>
                             </div>
 
-                            {/* Прогресс времени */}
-                            {currentAuction?.status === 'active' && (
+                            {currentAuction.status === 'active' && (
                                 <TimeProgress moveTimeLeft={moveTimeLeft} />
                             )}
 
-                            {/* Управление участниками */}
                             <ParticipantDialog
                                 isOpen={isDialogOpen}
                                 onOpenChange={setIsDialogOpen}
@@ -132,7 +183,6 @@ export default function OrganizerPanel() {
                                 currentAuction={currentAuction}
                             />
 
-                            {/* Таблица участников */}
                             <ParticipantsTable
                                 participants={participants}
                                 currentAuction={currentAuction}
@@ -144,7 +194,6 @@ export default function OrganizerPanel() {
                     </CardContent>
                 </Card>
 
-                {/* История ставок */}
                 <Card>
                     <CardHeader>
                         <CardTitle>История ставок</CardTitle>

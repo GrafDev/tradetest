@@ -1,6 +1,11 @@
-import { ref, set, get, update, remove, onValue, off, DataSnapshot } from 'firebase/database';
+import { ref, set, get, update, remove, onValue, off } from 'firebase/database';
 import { db } from '@/lib/firebase';
-import type { Auction, AuctionParticipant, Move } from '@/types/types';
+import type { Auction, AuctionParticipant, Move, AuctionItem } from '@/types/types';
+
+interface CreateAuctionData {
+    item: AuctionItem;
+    currentPrice: number;
+}
 
 export class FirebaseService {
     private static auctionRef = (auctionId: string) => ref(db, `auctions/${auctionId}`);
@@ -8,23 +13,23 @@ export class FirebaseService {
     private static participantsRef = (auctionId: string) => ref(db, `auction_users/${auctionId}`);
     private static auctionsRef = () => ref(db, 'auctions');
 
-    /**
-     * Создает новый аукцион
-     */
-    static async createAuction(baseAuction: Omit<Auction, 'id'>): Promise<string> {
+    // Базовые операции с аукционами
+    static async createAuction(data: CreateAuctionData): Promise<string> {
         const auctionId = crypto.randomUUID();
+
+        const baseAuction: Auction = {
+            id: auctionId,
+            status: 'waiting',
+            currentPrice: data.currentPrice,
+            currentParticipantIndex: 0,
+            participants: [],
+            item: data.item,
+            duration: 15 * 60 * 1000, // 15 минут
+            moveTimeout: 30 * 1000    // 30 секунд
+        };
+
         try {
-            await set(this.auctionRef(auctionId), {
-                ...baseAuction,
-                id: auctionId,
-                status: 'waiting',
-                currentPrice: 0,
-                currentParticipantIndex: 0,
-                participants: [],
-                startTime: undefined,  // Изменили с null на undefined
-                endTime: undefined,    // Изменили с null на undefined
-                moveDeadline: undefined // Изменили с null на undefined
-            });
+            await set(this.auctionRef(auctionId), baseAuction);
             return auctionId;
         } catch (error) {
             console.error('Error creating auction:', error);
@@ -32,287 +37,232 @@ export class FirebaseService {
         }
     }
 
-    /**
-     * Получает все активные аукционы
-     */
     static async getActiveAuctions(): Promise<Auction[]> {
-        try {
-            const snapshot = await get(this.auctionsRef());
-            const data = snapshot.val();
-            if (!data) return [];
-
-            const auctions = Object.values(data);
-            return auctions.filter((auction): auction is Auction =>
-                auction !== null &&
-                typeof auction === 'object' &&
-                'status' in auction &&
-                auction.status !== 'finished'
-            );
-        } catch (error) {
-            console.error('Error getting active auctions:', error);
-            throw new Error('Не удалось получить активные аукционы');
-        }
+        const snapshot = await get(this.auctionsRef());
+        const data = snapshot.val() || {};
+        return Object.values(data).filter((auction: any): auction is Auction =>
+            auction?.status !== 'finished'
+        );
     }
 
-    /**
-     * Получает конкретный аукцион по ID
-     */
     static async getAuction(auctionId: string): Promise<Auction | null> {
-        try {
-            const snapshot = await get(this.auctionRef(auctionId));
-            const data = snapshot.val();
-            if (!data) return null;
-            return data as Auction;
-        } catch (error) {
-            console.error('Error getting auction:', error);
-            throw new Error('Не удалось получить данные аукциона');
-        }
+        const snapshot = await get(this.auctionRef(auctionId));
+        return snapshot.val();
     }
 
-    /**
-     * Обновляет статус аукциона
-     */
+    static async getParticipantsCount(auctionId: string): Promise<number> {
+        const participants = await this.getParticipants(auctionId);
+        return participants.length;
+    }
+    // Управление статусом аукциона
     static async updateAuctionStatus(auctionId: string, status: Auction['status']) {
         try {
             const auction = await this.getAuction(auctionId);
             if (!auction) throw new Error('Аукцион не найден');
 
-            if (status === 'active') {
-                const participantsSnapshot = await get(this.participantsRef(auctionId));
-                const participants = participantsSnapshot.val() || [];
-                if (participants.length < 2) {
-                    throw new Error('Для начала торгов необходимо минимум 2 участника');
-                }
-            }
-
-            const now = Date.now();
             const updates: Partial<Auction> = { status };
 
             if (status === 'active') {
-                updates.startTime = now;
-                updates.moveDeadline = now + 30000;
-                updates.currentParticipantIndex = 0;
-                updates.duration = 15 * 60 * 1000;
+                const participants = await this.getParticipantsCount(auctionId);
+                if (participants < 2) {
+                    throw new Error('Для начала торгов необходимо минимум 2 участника');
+                }
+
+                const now = Date.now();
+                Object.assign(updates, {
+                    startTime: now,
+                    moveDeadline: now + 30000, // 30 секунд на ход
+                    duration: 15 * 60 * 1000, // 15 минут на аукцион
+                    currentParticipantIndex: 0
+                });
             }
 
             if (status === 'finished') {
-                updates.endTime = now;
-                updates.moveDeadline = undefined; // Изменили с null на undefined
+                Object.assign(updates, {
+                    endTime: Date.now()
+                });
             }
 
             await update(this.auctionRef(auctionId), updates);
+            return updates;
         } catch (error) {
             console.error('Error updating auction status:', error);
             throw error;
         }
     }
-
-    /**
-     * Обновляет данные аукциона
-     */
-    static async updateAuction(auctionId: string, updates: Partial<Auction>) {
+    // В класс FirebaseService добавляем новый метод:
+    static async updateAuction(auctionId: string, updates: Partial<Auction>): Promise<void> {
         try {
             const auction = await this.getAuction(auctionId);
             if (!auction) throw new Error('Аукцион не найден');
 
-            await update(this.auctionRef(auctionId), updates);
+            // Обновляем поля аукциона
+            await update(this.auctionRef(auctionId), {
+                ...updates,
+                lastUpdated: Date.now()
+            });
         } catch (error) {
             console.error('Error updating auction:', error);
-            throw error;
+            throw new Error('Не удалось обновить аукцион');
         }
     }
 
-    /**
-     * Добавляет нового участника в аукцион
-     */
-    static async addParticipant(auctionId: string, name: string): Promise<AuctionParticipant> {
+    // Управление ходами
+    static async updateMoveDeadline(auctionId: string, nextParticipantIndex: number) {
+        const now = Date.now();
+        await update(this.auctionRef(auctionId), {
+            currentParticipantIndex: nextParticipantIndex,
+            moveDeadline: now + 30000,
+            lastUpdated: now
+        });
+    }
+    // В класс FirebaseService добавляем новый метод:
+    static async updateAuctionItem(auctionId: string, itemUpdates: Partial<AuctionItem>): Promise<void> {
         try {
             const auction = await this.getAuction(auctionId);
             if (!auction) throw new Error('Аукцион не найден');
-            if (auction.status !== 'waiting') {
-                throw new Error('Нельзя добавить участника после начала торгов');
-            }
 
-            const participant: AuctionParticipant = {
-                id: crypto.randomUUID(),
-                name,
-                role: 'participant',
-                uniqueUrl: crypto.randomUUID()
+            // Обновляем только указанные поля предмета
+            const updatedItem = {
+                ...auction.item,
+                ...itemUpdates
             };
 
-            const participantsRef = this.participantsRef(auctionId);
-            const snapshot = await get(participantsRef);
-            const participants: AuctionParticipant[] = snapshot.val() || [];
-
-            // Добавляем участника
-            await set(participantsRef, [...participants, participant]);
-
-            // Обновляем список ID участников в аукционе
+            // Обновляем предмет в аукционе
             await update(this.auctionRef(auctionId), {
-                participants: [...participants.map(p => p.id), participant.id]
-            });
-
-            return participant;
-        } catch (error) {
-            console.error('Error adding participant:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Удаляет участника из аукциона
-     */
-    static async removeParticipant(auctionId: string, participantId: string): Promise<void> {
-        try {
-            const auction = await this.getAuction(auctionId);
-            if (!auction) throw new Error('Аукцион не найден');
-            if (auction.status !== 'waiting') {
-                throw new Error('Нельзя удалить участника после начала торгов');
-            }
-
-            const participantsRef = this.participantsRef(auctionId);
-            const snapshot = await get(participantsRef);
-            const participants: AuctionParticipant[] = snapshot.val() || [];
-
-            const updatedParticipants = participants.filter(p => p.id !== participantId);
-
-            if (participants.length === updatedParticipants.length) {
-                throw new Error('Участник не найден');
-            }
-
-            // Обновляем список участников
-            await set(participantsRef, updatedParticipants);
-
-            // Обновляем список ID участников в аукционе
-            await update(this.auctionRef(auctionId), {
-                participants: updatedParticipants.map(p => p.id)
+                item: updatedItem,
+                lastUpdated: Date.now()
             });
         } catch (error) {
-            console.error('Error removing participant:', error);
-            throw error;
+            console.error('Error updating auction item:', error);
+            throw new Error('Не удалось обновить информацию о предмете');
         }
     }
 
-    /**
-     * Добавляет новый ход в аукцион
-     */
-    static async addMove(auctionId: string, move: Move) {
-        try {
-            const auction = await this.getAuction(auctionId);
-            if (!auction) throw new Error('Аукцион не найден');
-            if (auction.status !== 'active') {
-                throw new Error('Аукцион не активен');
-            }
+    static async getParticipants(auctionId: string): Promise<AuctionParticipant[]> {
+        const snapshot = await get(this.participantsRef(auctionId));
+        return snapshot.val() || [];
+    }
 
-            const movesRef = this.movesRef(auctionId);
-            const snapshot = await get(movesRef);
-            const moves: Move[] = snapshot.val() || [];
-
-            // Проверяем, что новая цена больше текущей
-            if (move.price <= auction.currentPrice) {
-                throw new Error('Новая ставка должна быть больше текущей');
-            }
-
-            await set(movesRef, [...moves, move]);
-        } catch (error) {
-            console.error('Error adding move:', error);
-            throw error;
+    // Управление участниками
+    static async addParticipant(auctionId: string, name: string): Promise<AuctionParticipant> {
+        const auction = await this.getAuction(auctionId);
+        if (!auction || auction.status !== 'waiting') {
+            throw new Error('Нельзя добавить участника после начала торгов');
         }
-    }
 
-    /**
-     * Подписка на обновления аукциона
-     */
-    static subscribeToAuction(
-        auctionId: string,
-        callback: (auction: Auction | null) => void
-    ): () => void {
-        const auctionRef = this.auctionRef(auctionId);
-        onValue(auctionRef, (snapshot: DataSnapshot) => {
-            const data = snapshot.val();
-            callback(data as Auction | null);
+        const participant: AuctionParticipant = {
+            id: crypto.randomUUID(),
+            name,
+            role: 'participant',
+            uniqueUrl: crypto.randomUUID()
+        };
+
+        const participants = await this.getParticipants(auctionId);
+        participants.push(participant);
+
+        await set(this.participantsRef(auctionId), participants);
+        await update(this.auctionRef(auctionId), {
+            participants: participants.map(p => p.id)
         });
 
-        return () => off(auctionRef);
+        return participant;
     }
 
-    /**
-     * Подписка на обновления участников
-     */
-    static subscribeToParticipants(
-        auctionId: string,
-        callback: (participants: AuctionParticipant[]) => void
-    ): () => void {
-        const participantsRef = this.participantsRef(auctionId);
-        onValue(participantsRef, (snapshot: DataSnapshot) => {
-            const data = snapshot.val();
-            callback(Array.isArray(data) ? data : []);
+    static async removeParticipant(auctionId: string, participantId: string) {
+        const auction = await this.getAuction(auctionId);
+        if (!auction || auction.status !== 'waiting') {
+            throw new Error('Нельзя удалить участника после начала торгов');
+        }
+
+        const participants = await this.getParticipants(auctionId);
+        const updatedParticipants = participants.filter(p => p.id !== participantId);
+
+        if (participants.length === updatedParticipants.length) {
+            throw new Error('Участник не найден');
+        }
+
+        await set(this.participantsRef(auctionId), updatedParticipants);
+        await update(this.auctionRef(auctionId), {
+            participants: updatedParticipants.map(p => p.id)
+        });
+    }
+
+    // Управление ставками
+    static async addMove(auctionId: string, move: Omit<Move, 'timestamp'>) {
+        const auction = await this.getAuction(auctionId);
+        if (!auction || auction.status !== 'active') {
+            throw new Error('Аукцион не активен');
+        }
+
+        if (move.price <= auction.currentPrice) {
+            throw new Error('Новая ставка должна быть больше текущей');
+        }
+
+        if (move.price < auction.currentPrice + auction.item.minStep) {
+            throw new Error(`Минимальный шаг ставки: ${auction.item.minStep} ₽`);
+        }
+
+        const timestamp = Date.now();
+        const fullMove: Move = { ...move, timestamp };
+
+        const moves = await this.getMoves(auctionId);
+        await set(this.movesRef(auctionId), [...moves, fullMove]);
+        await update(this.auctionRef(auctionId), {
+            currentPrice: move.price,
+            lastUpdated: timestamp
         });
 
-        return () => off(participantsRef);
+        return fullMove;
     }
 
-    /**
-     * Подписка на обновления ходов
-     */
-    static subscribeToMoves(
-        auctionId: string,
-        callback: (moves: Move[]) => void
-    ): () => void {
-        const movesRef = this.movesRef(auctionId);
-        onValue(movesRef, (snapshot: DataSnapshot) => {
-            const data = snapshot.val();
-            callback(Array.isArray(data) ? data : []);
-        });
-
-        return () => off(movesRef);
+    static async getMoves(auctionId: string): Promise<Move[]> {
+        const snapshot = await get(this.movesRef(auctionId));
+        return snapshot.val() || [];
     }
 
-    /**
-     * Находит аукцион по URL участника
-     */
+    // Подписки на обновления
+    static subscribeToAuction(auctionId: string, callback: (auction: Auction | null) => void): () => void {
+        onValue(this.auctionRef(auctionId), (snapshot) => callback(snapshot.val()));
+        return () => off(this.auctionRef(auctionId));
+    }
+
+    static subscribeToParticipants(auctionId: string, callback: (participants: AuctionParticipant[]) => void): () => void {
+        onValue(this.participantsRef(auctionId), (snapshot) => callback(snapshot.val() || []));
+        return () => off(this.participantsRef(auctionId));
+    }
+
+    static subscribeToMoves(auctionId: string, callback: (moves: Move[]) => void): () => void {
+        onValue(this.movesRef(auctionId), (snapshot) => callback(snapshot.val() || []));
+        return () => off(this.movesRef(auctionId));
+    }
+
+    // Поиск и очистка
     static async findAuctionByParticipantUrl(url: string): Promise<{ auction: Auction; participant: AuctionParticipant } | null> {
-        try {
-            const auctionsSnapshot = await get(this.auctionsRef());
-            const auctions = auctionsSnapshot.val() || {};
+        const snapshot = await get(this.auctionsRef());
+        const auctions = snapshot.val() || {};
 
-            for (const auctionId of Object.keys(auctions)) {
-                const participantsSnapshot = await get(this.participantsRef(auctionId));
-                const participants: AuctionParticipant[] = participantsSnapshot.val() || [];
-
-                const participant = participants.find(p => p.uniqueUrl === url);
-                if (participant) {
-                    return {
-                        auction: auctions[auctionId],
-                        participant
-                    };
-                }
+        for (const auctionId of Object.keys(auctions)) {
+            const participants = await this.getParticipants(auctionId);
+            const participant = participants.find(p => p.uniqueUrl === url);
+            if (participant) {
+                return {
+                    auction: auctions[auctionId],
+                    participant
+                };
             }
-
-            return null;
-        } catch (error) {
-            console.error('Error finding auction by participant URL:', error);
-            throw new Error('Не удалось найти аукцион');
         }
+        return null;
     }
 
-    /**
-     * Очищает данные завершенного аукциона
-     */
-    static async cleanupAuction(auctionId: string): Promise<void> {
-        try {
-            const auction = await this.getAuction(auctionId);
-            if (!auction) throw new Error('Аукцион не найден');
-            if (auction.status !== 'finished') {
-                throw new Error('Можно очистить только завершенный аукцион');
-            }
-
-            await remove(this.auctionRef(auctionId));
-            await remove(this.participantsRef(auctionId));
-            await remove(this.movesRef(auctionId));
-        } catch (error) {
-            console.error('Error cleaning up auction:', error);
-            throw error;
+    static async cleanupAuction(auctionId: string) {
+        const auction = await this.getAuction(auctionId);
+        if (!auction || auction.status !== 'finished') {
+            throw new Error('Можно очистить только завершенный аукцион');
         }
+
+        await remove(this.auctionRef(auctionId));
+        await remove(this.participantsRef(auctionId));
+        await remove(this.movesRef(auctionId));
     }
 }

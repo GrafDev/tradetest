@@ -23,6 +23,14 @@ export interface AuthUser extends Omit<FirebaseUser, 'role'> {
 // Статусы аукциона
 export type AuctionStatus = 'waiting' | 'active' | 'finished';
 
+// Интерфейс предмета торгов
+export interface AuctionItem {
+    title: string;
+    description: string;
+    startPrice: number;
+    minStep: number;
+}
+
 // Интерфейс аукциона
 export interface Auction {
     id: string;
@@ -36,6 +44,7 @@ export interface Auction {
     winnerId?: string;
     duration?: number;
     moveTimeout?: number;
+    item: AuctionItem; // Добавляем свойство item
 }
 
 // Интерфейс хода в аукционе

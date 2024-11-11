@@ -1,15 +1,34 @@
-import { useState, useEffect, useCallback } from "react";
+// src/hooks/useAuction.ts
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { FirebaseService } from "@/lib/services/firebase-service";
-import type { Auction, AuctionParticipant, Move } from "@/types/types";
+import type { Auction, AuctionParticipant, Move, AuctionItem } from "@/types/types";
+
+interface CreateAuctionOptions {
+    item: AuctionItem;
+}
+
 export function useAuction() {
     const [currentAuction, setCurrentAuction] = useState<Auction | null>(null);
     const [participants, setParticipants] = useState<AuctionParticipant[]>([]);
     const [moves, setMoves] = useState<Move[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [auctionTimeLeft, setAuctionTimeLeft] = useState<number>(0);
     const [moveTimeLeft, setMoveTimeLeft] = useState<number>(0);
     const { toast } = useToast();
+
+    // Функция обновления аукциона
+    const refreshAuction = async () => {
+        try {
+            const activeAuctions = await FirebaseService.getActiveAuctions();
+            const auction = activeAuctions[0];
+            if (auction) {
+                setCurrentAuction(auction);
+            }
+        } catch (error) {
+            console.error('Ошибка обновления аукциона:', error);
+        }
+    };
 
     // Инициализация и подписки
     useEffect(() => {
@@ -21,31 +40,15 @@ export function useAuction() {
             try {
                 setLoading(true);
                 const activeAuctions = await FirebaseService.getActiveAuctions();
-                let auction = activeAuctions[0];
-
-                if (!auction) {
-                    const auctionId = await FirebaseService.createAuction({
-                        status: 'waiting',
-                        currentPrice: 0,
-                        currentParticipantIndex: 0,
-                        participants: [],
-                        duration: 15 * 60 * 1000,
-                        moveTimeout: 30 * 1000,
-                    });
-
-                    const newAuction = await FirebaseService.getAuction(auctionId);
-                    if (newAuction) {
-                        auction = newAuction;
-                    }
-                }
+                const auction = activeAuctions[0];
 
                 if (auction?.id) {
+                    setCurrentAuction(auction);
+
                     unsubscribeAuction = FirebaseService.subscribeToAuction(
                         auction.id,
                         (updatedAuction) => {
-                            if (updatedAuction) {
-                                setCurrentAuction(updatedAuction);
-                            }
+                            if (updatedAuction) setCurrentAuction(updatedAuction);
                         }
                     );
 
@@ -87,6 +90,7 @@ export function useAuction() {
         const interval = setInterval(() => {
             const now = Date.now();
 
+            // Обновление времени аукциона
             if (currentAuction.status === 'active' && currentAuction.startTime && currentAuction.duration) {
                 const endTime = currentAuction.startTime + currentAuction.duration;
                 const timeLeft = Math.max(0, Math.floor((endTime - now) / 1000));
@@ -97,16 +101,74 @@ export function useAuction() {
                 }
             }
 
+            // Обновление времени хода
             if (currentAuction.moveDeadline) {
                 const moveTime = Math.max(0, Math.floor((currentAuction.moveDeadline - now) / 1000));
                 setMoveTimeLeft(moveTime);
+
+                // Автоматический пропуск хода при истечении времени
+                if (moveTime === 0 && currentAuction.status === 'active') {
+                    const nextParticipantIndex = (currentAuction.currentParticipantIndex + 1) % participants.length;
+                    FirebaseService.updateMoveDeadline(currentAuction.id, nextParticipantIndex).catch(console.error);
+                }
             }
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [currentAuction]);
+    }, [currentAuction, participants]);
 
-    const handleStartAuction = useCallback(async () => {
+    // Создание нового аукциона
+    const createAuction = async (options: CreateAuctionOptions) => {
+        try {
+            setLoading(true);
+            const auctionId = await FirebaseService.createAuction({
+                item: options.item,
+                currentPrice: options.item.startPrice
+            });
+
+            toast({
+                title: "Аукцион создан",
+                description: "Теперь вы можете добавлять участников"
+            });
+
+            return auctionId;
+        } catch (error) {
+            console.error('Ошибка при создании аукциона:', error);
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: error instanceof Error ? error.message : "Не удалось создать аукцион"
+            });
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Обновление информации о предмете
+    const updateAuctionItem = async (auctionId: string, itemUpdates: Partial<AuctionItem>) => {
+        try {
+            setLoading(true);
+            await FirebaseService.updateAuctionItem(auctionId, itemUpdates);
+
+            toast({
+                title: "Успешно",
+                description: "Информация о предмете обновлена"
+            });
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: "Не удалось обновить информацию о предмете"
+            });
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Запуск аукциона
+    const handleStartAuction = async () => {
         if (!currentAuction?.id) return;
 
         try {
@@ -126,9 +188,10 @@ export function useAuction() {
         } finally {
             setLoading(false);
         }
-    }, [currentAuction?.id]);
+    };
 
-    const handleEndAuction = useCallback(async () => {
+    // Завершение аукциона
+    const handleEndAuction = async () => {
         if (!currentAuction?.id) return;
 
         try {
@@ -138,7 +201,8 @@ export function useAuction() {
             const lastMove = moves[moves.length - 1];
             if (lastMove) {
                 await FirebaseService.updateAuction(currentAuction.id, {
-                    winnerId: lastMove.userId
+                    winnerId: lastMove.userId,
+                    endTime: Date.now()
                 });
             }
 
@@ -156,9 +220,10 @@ export function useAuction() {
         } finally {
             setLoading(false);
         }
-    }, [currentAuction?.id, moves]);
+    };
 
-    const handleAddParticipant = useCallback(async (name: string): Promise<AuctionParticipant> => {
+    // Добавление участника
+    const handleAddParticipant = async (name: string): Promise<AuctionParticipant> => {
         if (!currentAuction?.id) {
             throw new Error("Аукцион не инициализирован");
         }
@@ -170,9 +235,10 @@ export function useAuction() {
         } finally {
             setLoading(false);
         }
-    }, [currentAuction?.id]);
+    };
 
-    const handleRemoveParticipant = useCallback(async (participantId: string) => {
+    // Удаление участника
+    const handleRemoveParticipant = async (participantId: string) => {
         if (!currentAuction?.id) {
             toast({
                 variant: "destructive",
@@ -199,7 +265,7 @@ export function useAuction() {
         } finally {
             setLoading(false);
         }
-    }, [currentAuction?.id]);
+    };
 
     return {
         currentAuction,
@@ -208,9 +274,12 @@ export function useAuction() {
         loading,
         auctionTimeLeft,
         moveTimeLeft,
+        createAuction,
+        updateAuctionItem,
         handleStartAuction,
         handleEndAuction,
         handleAddParticipant,
         handleRemoveParticipant,
-    } as const;
+        refreshAuction,
+    };
 }
